@@ -412,3 +412,153 @@ FROM x
 GROUP BY point, date
 ```
 
+# 31
+
+Для классов кораблей, калибр орудий которых не менее 16 дюймов, укажите класс и страну.
+
+```sql
+SELECT class, country
+FROM classes
+WHERE bore>=16
+```
+
+# 32
+
+Одной из характеристик корабля является половина куба калибра его главных орудий (mw). С точностью до 2 десятичных знаков определите среднее значение mw для кораблей каждой страны, у которой есть корабли в базе данных.
+
+```sql
+SELECT country, CAST(avg(bore * bore * bore / 2) AS numeric(6,2)) AS mw
+FROM (
+	SELECT country, bore, s.name
+	FROM classes c 
+	JOIN ships s ON c.class = s.class
+	UNION
+	SELECT country, bore, ship
+	FROM classes
+	LEFT JOIN outcomes o ON class = ship
+	WHERE ship NOT IN (SELECT name FROM ships)
+	) a
+GROUP BY country
+```
+
+# 33
+
+Укажите корабли, потопленные в сражениях в Северной Атлантике (North Atlantic). Вывод: ship.
+
+```sql
+SELECT ship
+FROM outcomes
+WHERE result='sunk' AND battle='north atlantic'
+```
+
+# 34
+
+По Вашингтонскому международному договору от начала 1922 г. запрещалось строить линейные корабли водоизмещением более 35 тыс.тонн. Укажите корабли, нарушившие этот договор (учитывать только корабли c известным годом спуска на воду). Вывести названия кораблей.
+
+```sql
+SELECT name
+FROM ships s
+JOIN classes c ON c.class = s.class
+WHERE launched >= 1922 AND displacement > 35000 AND type = 'bb'
+```
+
+# 35
+
+В таблице Product найти модели, которые состоят только из цифр или только из латинских букв (A-Z, без учета регистра).
+Вывод: номер модели, тип модели.
+
+```sql
+SELECT model, type
+FROM product
+WHERE model NOT LIKE '%[^0-9]%' OR model NOT LIKE '%[^a-zA-Z]%'
+```
+
+# 36
+
+Перечислите названия головных кораблей, имеющихся в базе данных (учесть корабли в Outcomes).
+
+```sql
+SELECT name
+FROM classes c
+JOIN ships s ON s.class = c.class
+WHERE name = c.class
+UNION
+SELECT ship
+FROM classes c
+JOIN outcomes o ON o.ship = c.class
+```
+
+# 37
+
+Найдите классы, в которые входит только один корабль из базы данных (учесть также корабли в Outcomes).
+
+```sql
+WITH x AS (SELECT c.class, s.name
+	FROM classes c
+	JOIN ships s ON s.class = c.class
+	UNION
+	SELECT c.class, o.ship
+	FROM classes c
+	JOIN outcomes o ON o.ship = c.class
+	)
+
+SELECT class
+FROM x
+GROUP BY class
+HAVING COUNT(name) = 1
+```
+
+# 38
+
+Найдите страны, имевшие когда-либо классы обычных боевых кораблей ('bb') и имевшие когда-либо классы крейсеров ('bc').
+
+```sql
+SELECT country
+FROM classes
+WHERE type = 'bb' 
+INTERSECT
+SELECT country
+FROM classes
+WHERE type = 'bc'
+```
+
+# 39
+
+Найдите корабли, `сохранившиеся для будущих сражений`; т.е. выведенные из строя в одной битве (damaged), они участвовали в другой, произошедшей позже.
+
+```sql
+SELECT DISTINCT o.ship FROM outcomes o
+JOIN battles b ON o.battle = b.name
+WHERE o.result = 'damaged' 
+	AND exists (
+		SELECT * FROM outcomes o2
+		JOIN battles b2 ON o2.battle = b2.name
+		WHERE b2.date > b.date AND o2.ship=o.ship
+		)
+```
+
+# 40
+
+Найти производителей, которые выпускают более одной модели, при этом все выпускаемые производителем модели являются продуктами одного типа.
+Вывести: maker, type
+
+```sql
+SELECT maker, type
+FROM product
+WHERE maker in (
+	SELECT maker
+	FROM (
+		SELECT maker, type
+		FROM product
+		GROUP BY maker, type
+		) x
+	GROUP BY maker
+	HAVING count(type) = 1
+	)
+GROUP BY maker, type
+HAVING count(model) > 1
+```
+
+
+
+
