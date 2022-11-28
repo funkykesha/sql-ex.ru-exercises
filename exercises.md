@@ -559,6 +559,203 @@ GROUP BY maker, type
 HAVING count(model) > 1
 ```
 
+# 41
+
+Для каждого производителя, у которого присутствуют модели хотя бы в одной из таблиц PC, Laptop или Printer,
+определить максимальную цену на его продукцию.
+Вывод: имя производителя, если среди цен на продукцию данного производителя присутствует NULL, то выводить для этого производителя NULL,
+иначе максимальную цену.
+
+
+```sql
+SELECT maker,
+CASE 
+WHEN MAX (
+	CASE WHEN price IS null then 1 else 0 END
+	) = 0
+THEN MAX(price)
+END m_price
+FROM (
+	SELECT maker, price FROM pc JOIN product p ON pc.model = p.model
+	UNION
+	SELECT maker, price FROM laptop JOIN product p ON laptop.model = p.model
+	UNION
+	SELECT maker, price FROM printer JOIN product p ON printer.model = p.model
+	) x
+GROUP BY maker
+```
+
+# 42
+
+Найдите названия кораблей, потопленных в сражениях, и название сражения, в котором они были потоплены.
+
+```sql
+SELECT ship, battle
+FROM outcomes
+WHERE result = 'sunk'
+```
+
+# 43
+
+Укажите сражения, которые произошли в годы, не совпадающие ни с одним из годов спуска кораблей на воду.
+
+```sql
+SELECT battles.name battles_name
+FROM battles
+WHERE YEAR(date) NOT IN (
+				SELECT launched FROM ships WHERE launched IS NOT NULL
+				)
+```
+
+# 44
+
+Найдите названия всех кораблей в базе данных, начинающихся с буквы R.
+
+```sql
+SELECT name 
+FROM (
+	SELECT name
+	FROM ships
+	UNION
+	SELECT ship
+	FROM outcomes
+	) x
+WHERE name LIKE 'R%'
+```
+
+# 45
+
+Найдите названия всех кораблей в базе данных, состоящие из трех и более слов (например, King George V).
+Считать, что слова в названиях разделяются единичными пробелами, и нет концевых пробелов.
+
+```sql
+SELECT name
+FROM (
+	SELECT name
+	FROM ships
+	UNION
+	SELECT ship
+	FROM outcomes
+	) x
+WHERE name LIKE '% % %'
+```
+
+# 46
+
+Для каждого корабля, участвовавшего в сражении при Гвадалканале (Guadalcanal), вывести название, водоизмещение и число орудий.
+
+```sql
+SELECT ship, displacement, numGuns
+FROM outcomes 
+FULL JOIN ships ON ship = name
+FULL JOIN classes ON ships.class = classes.class OR outcomes.ship = classes.class
+WHERE battle = 'Guadalcanal'
+```
+
+# 47
+
+Определить страны, которые потеряли в сражениях все свои корабли.
+
+```sql
+WITH t1 AS (
+	SELECT country, COUNT(name) as co
+	FROM (
+		SELECT country, name
+		FROM classes
+		JOIN ships ON classes.class = ships.class
+		UNION
+		SELECT country, ship
+		FROM classes
+		JOIN outcomes ON classes.class = outcomes.ship
+		) u1
+	GROUP BY country),
+t2 as (
+	SELECT country, COUNT(name) as co
+	FROM (
+		SELECT country, name
+		FROM classes
+		JOIN ships ON classes.class = ships.class
+		WHERE name IN (
+			SELECT ship 
+			FROM outcomes 
+			WHERE result = 'sunk'
+			)
+		UNION
+		SELECT country, ship
+		FROM classes
+		JOIN outcomes ON classes.class = outcomes.ship
+		WHERE ship IN (
+			SELECT ship 
+			FROM outcomes 
+			WHERE result = 'sunk'
+			)
+		) u2
+	GROUP BY country)
+
+SELECT t1.country
+FROM t1
+JOIN t2 ON t1.country = t2.country
+WHERE t1.co = t2.co 
+	AND t1.country = t2.country
+```
+
+# 48
+
+Найдите классы кораблей, в которых хотя бы один корабль был потоплен в сражении.
+
+```sql
+SELECT classes.class
+FROM classes
+JOIN ships ON classes.class = ships.class
+WHERE name IN (
+	SELECT ship 
+	FROM outcomes 
+	WHERE result = 'sunk'
+	)
+UNION
+SELECT classes.class
+FROM classes
+JOIN outcomes ON classes.class = outcomes.ship
+WHERE ship IN (
+	SELECT ship 
+	FROM outcomes 
+	WHERE result = 'sunk')
+```
+
+# 49
+
+Найдите названия кораблей с орудиями калибра 16 дюймов (учесть корабли из таблицы Outcomes).
+
+```sql
+SELECT ships.name
+FROM classes
+JOIN ships ON classes.class = ships.class
+WHERE bore = 16
+UNION
+SELECT outcomes.ship
+FROM classes
+JOIN outcomes ON classes.class = outcomes.ship
+WHERE bore = 16
+```
+
+# 50
+
+Найдите сражения, в которых участвовали корабли класса Kongo из таблицы Ships.
+
+```sql
+SELECT battle
+FROM ships
+JOIN outcomes ON ship = name
+WHERE class = 'kongo'
+UNION
+SELECT battle
+FROM ships
+JOIN outcomes ON ship = class
+WHERE class = 'kongo'
+```
+
+
+
 
 
 
