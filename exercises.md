@@ -754,6 +754,256 @@ JOIN outcomes ON ship = class
 WHERE class = 'kongo'
 ```
 
+# 51
+
+Найдите названия кораблей, имеющих наибольшее число орудий среди всех имеющихся кораблей такого же водоизмещения (учесть корабли из таблицы Outcomes).
+
+```sql
+WITH t1 AS (
+	SELECT name, displacement, numguns
+	FROM classes
+	JOIN ships ON classes.class = ships.class
+	UNION
+	SELECT ship, displacement, numguns
+	FROM classes
+	JOIN outcomes ON classes.class = outcomes.ship
+	),
+t2 AS (
+	SELECT displacement, MAX(numguns) m_numguns
+	FROM t1
+	GROUP BY displacement)
+
+SELECT name
+FROM t1
+JOIN t2 ON t1.displacement = t2.displacement 
+	AND t1.numguns = t2.m_numguns
+```
+
+# 52
+
+Определить названия всех кораблей из таблицы Ships, которые могут быть линейным японским кораблем,
+имеющим число главных орудий не менее девяти, калибр орудий менее 19 дюймов и водоизмещение не более 65 тыс.тонн
+
+```sql
+WITH t1 AS (
+	SELECT name, country, type, numGuns, bore, displacement 
+	FROM ships
+	JOIN classes ON classes.class = ships.class
+	),
+t2 AS (
+	SELECT 
+	CASE 
+	WHEN (type = 'bb')
+		AND (country = 'japan')
+		AND (numGuns >= 9 OR numGuns IS NULL)
+		AND (bore < 19 OR bore IS NULL)
+		AND (displacement <= 65000 OR displacement IS NULL) 
+	THEN name 
+	END name
+	FROM t1
+	)
+
+
+SELECT name 
+FROM t2
+WHERE name IS NOT NULL
+```
+
+# 53
+
+Определите среднее число орудий для классов линейных кораблей.
+Получить результат с точностью до 2-х десятичных знаков.
+
+```sql
+SELECT CAST(
+	AVG(
+		CAST(numguns AS numeric(6,2))
+		) AS numeric(6,2)
+	)
+FROM classes
+WHERE type = 'bb'
+```
+
+# 54
+
+С точностью до 2-х десятичных знаков определите среднее число орудий всех линейных кораблей (учесть корабли из таблицы Outcomes).
+
+```sql
+SELECT CAST(
+	AVG(
+		CAST(numguns AS numeric(6,2))
+		) AS numeric(6,2)
+	)
+FROM (
+	SELECT name, numguns, type
+	FROM classes
+	RIGHT JOIN ships ON classes.class = ships.class
+	UNION
+	SELECT ship, numguns, type
+	FROM classes
+	RIGHT JOIN outcomes ON classes.class = outcomes.ship
+	) t1
+WHERE type = 'bb'
+```
+
+# 55
+
+Для каждого класса определите год, когда был спущен на воду первый корабль этого класса. Если год спуска на воду головного корабля неизвестен, определите минимальный год спуска на воду кораблей этого класса. Вывести: класс, год.
+
+```sql
+SELECT classes.class, MIN(launched)
+FROM classes
+LEFT JOIN ships ON ships.class = classes.class
+LEFT JOIN outcomes ON ships.class = outcomes.ship
+GROUP BY classes.class
+```
+
+# 56
+
+Для каждого класса определите число кораблей этого класса, потопленных в сражениях. Вывести: класс и число потопленных кораблей.
+
+```sql
+SELECT class, SUM(
+				CASE
+				WHEN result = 'sunk'
+				THEN 1
+				ELSE 0
+				END) sunked
+FROM (
+	SELECT classes.class, ships.name, result
+	FROM classes
+	LEFT JOIN ships ON classes.class = ships.class
+	LEFT JOIN outcomes ON ships.name = outcomes.ship
+	WHERE name IS NOT NULL
+	UNION
+	SELECT classes.class, outcomes.ship, result
+	FROM classes
+	LEFT JOIN outcomes ON classes.class = outcomes.ship) x
+GROUP BY class
+```
+
+# 57
+
+Для классов, имеющих потери в виде потопленных кораблей и не менее 3 кораблей в базе данных, вывести имя класса и число потопленных кораблей.
+
+```sql
+WITH t1 AS (
+	SELECT classes.class, name 
+	FROM classes JOIN Ships ON classes.class = Ships.class 
+	WHERE name IN (
+		SELECT ship
+		FROM outcomes 
+		WHERE result = 'sunk'
+		)
+	UNION
+	SELECT class, ship 
+	FROM classes 
+	JOIN Outcomes ON ship = class 
+	WHERE result = 'sunk'
+	),
+t2 AS (SELECT classes.class, name 
+		FROM classes 
+		JOIN Ships ON classes.class = Ships.class
+		UNION
+		SELECT class, ship 
+		FROM classes JOIN Outcomes ON ship = class
+		)
+
+SELECT class, COUNT(name) sunked
+FROM t1
+WHERE class IN (
+	SELECT class
+	FROM t2
+	GROUP BY class HAVING count(class) > 2)
+GROUP BY class
+```
+
+# 58
+
+Для каждого типа продукции и каждого производителя из таблицы Product c точностью до двух десятичных знаков найти процентное отношение числа моделей данного типа данного производителя к общему числу моделей этого производителя.
+Вывод: maker, type, процентное отношение числа моделей данного типа к общему числу моделей производителя
+
+```sql
+WITH t1 AS (
+	SELECT p1.maker, p2.type
+	FROM product p1, product p2
+	GROUP BY p1.maker, p2.type),
+t2 AS (
+	SELECT maker, COUNT(model) cm
+	FROM product
+	GROUP BY maker),
+t3 AS (
+	SELECT maker, type, COUNT(model) cmt
+	FROM product
+	GROUP BY maker, type),
+t4 AS (
+	SELECT t1.maker, t1.type, 
+	CASE 
+	WHEN cmt IS NULL 
+	THEN 0 
+	ELSE cmt 
+	END cmt
+	FROM t1
+	LEFT JOIN t3 ON t1.maker = t3.maker AND t1.type = t3.type),
+t5 AS (
+	SELECT t4.maker, t4.type, cm, cmt
+	FROM t4
+	LEFT JOIN t2 ON t4.maker = t2.maker)
+
+SELECT maker, 
+		type, 
+		CAST(
+			CAST(cmt AS NUMERIC(6,2)) / CAST(cm AS NUMERIC(6,2)) * 100 AS NUMERIC(6,2)
+			) prc
+FROM t5
+```
+
+# 59
+
+Посчитать остаток денежных средств на каждом пункте приема для базы данных с отчетностью не чаще одного раза в день. Вывод: пункт, остаток.
+
+```sql
+WITH t1 AS (
+	SELECT point, date, 0 out, SUM(inc) AS inc
+	FROM income_o
+	GROUP BY point, date
+	UNION
+	SELECT point, date, SUM(out) out, 0
+	FROM outcome_o
+	GROUP BY point, date
+	)
+
+SELECT point, SUM(inc)-sum(out) AS inc
+FROM t1
+GROUP BY point
+```
+
+# 60
+
+Посчитать остаток денежных средств на начало дня 15/04/01 на каждом пункте приема для базы данных с отчетностью не чаще одного раза в день. Вывод: пункт, остаток.
+Замечание. Не учитывать пункты, информации о которых нет до указанной даты.
+
+```sql
+WITH t1 AS (
+	SELECT point, CAST(date AS date) date, 0 out, SUM(inc) AS inc
+	FROM income_o
+	GROUP BY point, date
+	UNION
+	SELECT point, CAST(date AS date), SUM(out) AS out, 0
+	FROM outcome_o
+	GROUP BY point, date
+	)
+
+SELECT point, SUM(inc)-sum(out) AS inc
+FROM t1
+WHERE date <= '2001-04-14'
+GROUP BY point
+```
+
+
+
+
+
 
 
 
