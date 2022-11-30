@@ -1000,6 +1000,249 @@ WHERE date <= '2001-04-14'
 GROUP BY point
 ```
 
+# 61
+
+Посчитать остаток денежных средств на всех пунктах приема для базы данных с отчетностью не чаще одного раза в день.
+
+```sql
+WITH t1 AS (
+	SELECT 0 out, SUM(inc) inc
+	FROM income_o
+	UNION
+	SELECT SUM(out) out, 0
+	FROM outcome_o
+	)
+
+SELECT SUM(inc)-SUM(out) inc
+FROM t1
+```
+
+# 62
+
+Посчитать остаток денежных средств на всех пунктах приема на начало дня 15/04/01 для базы данных с отчетностью не чаще одного раза в день.
+
+```sql
+WITH t1 AS (
+	SELECT CAST(date AS date) date, 0 AS out, SUM(inc) AS inc
+	FROM income_o
+	GROUP BY date
+	UNION
+	SELECT CAST(date AS date), SUM(out) AS out, 0
+	FROM outcome_o
+	GROUP BY date)
+
+SELECT SUM(inc)-sum(out) AS inc
+FROM t1
+WHERE date <= '2001-04-14'
+```
+
+# 63
+
+Определить имена разных пассажиров, когда-либо летевших на одном и том же месте более одного раза.
+
+```sql
+WITH t1 AS (
+	SELECT p.id_psg, p.name, t.place, COUNT(*) AS count
+	FROM pass_in_trip AS t
+	JOIN passenger p ON t.ID_psg = p.ID_psg
+	GROUP BY p.id_psg, p.name, t.place
+	)
+
+SELECT name
+FROM t1
+WHERE count > 1
+GROUP BY id_psg, name
+```
+
+# 64
+
+Используя таблицы Income и Outcome, для каждого пункта приема определить дни, когда был приход, но не было расхода и наоборот.
+Вывод: пункт, дата, тип операции (inc/out), денежная сумма за день.
+
+```sql
+WITH t1 AS (
+	SELECT point, date, 'inc' oper, SUM(inc) AS money
+	FROM income
+	GROUP BY point, date
+	UNION
+	SELECT point, CAST(date AS date), 'out', SUM(out)
+	FROM outcome
+	GROUP BY point, date
+	),
+t2 AS (
+	SELECT point, date
+	FROM t1
+	GROUP BY point, date
+	HAVING COUNT(*) = 1
+	)
+
+SELECT t1.point, t1.date, oper, money
+FROM t1
+JOIN t2 ON t1.point = t2.point 
+	AND t1.date = t2.date
+```
+
+# 65
+
+Пронумеровать уникальные пары {maker, type} из Product, упорядочив их следующим образом:
+- имя производителя (maker) по возрастанию;
+- тип продукта (type) в порядке PC, Laptop, Printer.
+Если некий производитель выпускает несколько типов продукции, то выводить его имя только в первой строке;
+остальные строки для ЭТОГО производителя должны содержать пустую строку символов ('').
+
+```sql
+WITH t1 AS (
+	SELECT maker, type, 
+		CASE
+		WHEN type = 'PC' THEN 1
+		WHEN type = 'laptop' THEN 2
+		WHEN type = 'printer' THEN 3
+		END num_type
+	FROM product
+	GROUP BY maker, type
+	),
+t2 AS (
+	SELECT ROW_NUMBER() OVER(ORDER BY maker, num_type) AS num, 
+	ROW_NUMBER() OVER(PARTITION BY maker ORDER BY num_type) AS num_type,
+	maker, 
+	type
+	FROM t1
+	)
+
+SELECT num, 
+	CASE
+	WHEN num_type = 1
+	THEN maker
+	ELSE ''
+	END maker, 
+	type
+FROM t2
+ORDER BY num
+```
+
+# 66
+
+Для всех дней в интервале с 01/04/2003 по 07/04/2003 определить число рейсов из Rostov.
+Вывод: дата, количество рейсов
+
+```sql
+WITH t1 AS (
+	SELECT '2003-04-01' AS date 
+	UNION ALL 
+	SELECT '2003-04-02' AS date 
+	UNION ALL 
+	SELECT '2003-04-03' AS date 
+	UNION ALL 
+	SELECT '2003-04-04' AS date 
+	UNION ALL 
+	SELECT '2003-04-05' AS date 
+	UNION ALL 
+	SELECT '2003-04-06' AS date 
+	UNION ALL 
+	SELECT '2003-04-07' AS date
+	),
+t2 AS (
+	SELECT date, trip.trip_no
+	FROM trip 
+	JOIN Pass_in_trip pit ON trip.trip_no = pit.trip_no
+	WHERE town_from = 'rostov'
+	GROUP BY date, trip.trip_no
+	)
+
+SELECT CONVERT(datetime, t1.date), COUNT(trip_no) AS num
+FROM t1
+LEFT JOIN t2 ON t1.date = t2.date
+GROUP BY t1.date
+```
+
+# 67
+
+Найти количество маршрутов, которые обслуживаются наибольшим числом рейсов.
+Замечания.
+1) A - B и B - A считать РАЗНЫМИ маршрутами.
+2) Использовать только таблицу Trip
+
+```sql
+WITH t1 AS (
+	SELECT COUNT(*) num, 
+		town_from, 
+		town_to
+	FROM trip
+	GROUP BY town_from, town_to
+	)
+
+SELECT COUNT(num) AS count_num
+FROM t1
+WHERE num = ANY (
+			SELECT MAX(num) 
+			FROM t1
+			)
+```
+
+# 68
+
+Найти количество маршрутов, которые обслуживаются наибольшим числом рейсов.
+Замечания.
+1) A - B и B - A считать ОДНИМ И ТЕМ ЖЕ маршрутом.
+2) Использовать только таблицу Trip
+
+```sql
+WITH t1 AS (
+	SELECT 
+		CASE 
+		WHEN town_from > town_to
+		THEN town_from ELSE town_to
+		END fst,
+		CASE when town_from < town_to
+		THEN town_from ELSE town_to
+		END snd
+	FROM trip
+	),
+t2 AS (
+	SELECT COUNT(*) num, fst, snd
+	FROM t1
+	GROUP BY fst, snd
+	)
+
+SELECT COUNT(*) AS trips
+FROM t2
+WHERE num = ANY (
+			SELECT MAX(num) 
+			FROM t2
+			)
+```
+
+# 69
+
+По таблицам Income и Outcome для каждого пункта приема найти остатки денежных средств на конец каждого дня,
+в который выполнялись операции по приходу и/или расходу на данном пункте.
+Учесть при этом, что деньги не изымаются, а остатки/задолженность переходят на следующий день.
+Вывод: пункт приема, день в формате "dd/mm/yyyy", остатки/задолженность на конец этого дня.
+
+```sql
+WITH q AS (SELECT
+    ISNULL(i.point, o.point) AS point,
+    ISNULL(i.date, o.date) AS date, 
+    COALESCE(SUM(i.inc), 0) - COALESCE(sum(o.out), 0) AS balance
+    FROM income i
+    FULL JOIN outcome AS o on i.point=o.point 
+    							AND i.date=o.date 
+    							AND i.code=o.code
+    GROUP BY ISNULL(i.point, o.point), ISNULL(i.date, o.date)
+	)
+
+SELECT point, 
+	CONVERT(varchar, date, 103) AS day, 
+	SUM(balance) OVER(PARTITION BY point ORDER BY date RANGE UNBOUNDED PRECEDING) as rem
+FROM q
+ORDER BY point,date
+```
+
+
+
+
+
+
 
 
 
